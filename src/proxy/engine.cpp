@@ -188,14 +188,16 @@ public:
 
 		WebSocketOverHttp::setMaxManagedDisconnects(config.maxWorkers);
 
+		DomainMap::LookupMode lookupMode = config.acceptPushpinRoute ? DomainMap::DomainOrIdLookups : DomainMap::DomainLookups;
+
 		if(!config.routeLines.isEmpty())
 		{
-			domainMap = new DomainMap(DomainMap::DomainLookups, this);
+			domainMap = new DomainMap(lookupMode, this);
 			foreach(const QString &line, config.routeLines)
 				domainMap->addRouteLine(line);
 		}
 		else
-			domainMap = new DomainMap(DomainMap::DomainLookups, config.routesFile, this);
+			domainMap = new DomainMap(lookupMode, config.routesFile, this);
 
 		connect(domainMap, &DomainMap::changed, this, &Private::domainMap_changed);
 
@@ -507,6 +509,7 @@ public:
 			rs->setPrefetchSize(config.inspectPrefetch);
 			rs->setDefaultUpstreamKey(config.upstreamKey);
 			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
+			rs->setAcceptPushpinRoute(config.acceptPushpinRoute);
 		}
 		else
 		{
@@ -568,8 +571,14 @@ public:
 
 		QByteArray encPath = requestUri.path(QUrl::FullyEncoded).toUtf8();
 
+		QString routeId = QString::fromUtf8(sock->requestHeaders().get("Pushpin-Route"));
+
 		// look up the route
-		DomainMap::Entry route = domainMap->entry(DomainMap::WebSocket, isSecure, host, encPath);
+		DomainMap::Entry route;
+		if(config.acceptPushpinRoute && !routeId.isEmpty())
+			route = domainMap->entry(routeId);
+		else
+			route = domainMap->entry(DomainMap::WebSocket, isSecure, host, encPath);
 
 		// before we do anything else, see if this is a sockjs request
 		if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
